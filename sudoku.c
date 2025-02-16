@@ -5,6 +5,70 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
+
+bool checkRows(int psize, int **grid) {
+    for (int row = 1; row <= psize; row++) {
+        bool found[psize + 1];  // To track numbers 1 to psize
+        for (int i = 1; i <= psize; i++) {
+            found[i] = false;
+        }
+
+        for (int col = 1; col <= psize; col++) {
+            int num = grid[row][col];
+            if (num < 1 || num > psize || found[num]) {
+                return false; // Duplicate or invalid number found
+            }
+            found[num] = true;
+        }
+    }
+    return true; // All rows are valid
+}
+
+bool checkColumns(int psize, int **grid) {
+    for (int col = 1; col <= psize; col++) {
+        bool found[psize + 1];  // To track numbers 1 to psize
+        for (int i = 1; i <= psize; i++) {
+            found[i] = false;
+        }
+
+        for (int row = 1; row <= psize; row++) {
+            int num = grid[row][col];
+            if (num < 1 || num > psize || found[num]) {
+                return false; // Duplicate or invalid number found
+            }
+            found[num] = true;
+        }
+    }
+    return true; // All columns are valid
+}
+
+// Function to check if all subgrids in the Sudoku puzzle are valid
+bool checkSubgrids(int psize, int **grid) {
+    int subgrid_size = sqrt(psize);  // Each subgrid is subgrid_size x subgrid_size
+
+    // Iterate through each subgrid
+    for (int startRow = 1; startRow <= psize; startRow += subgrid_size) {
+        for (int startCol = 1; startCol <= psize; startCol += subgrid_size) {
+            bool found[psize + 1];  // Track numbers 1 to psize
+            for (int i = 1; i <= psize; i++) {
+                found[i] = false;
+            }
+
+            // Check all numbers inside the subgrid
+            for (int row = startRow; row < startRow + subgrid_size; row++) {
+                for (int col = startCol; col < startCol + subgrid_size; col++) {
+                    int num = grid[row][col];
+                    if (num < 1 || num > psize || found[num]) {
+                        return false;  // Duplicate or invalid number found
+                    }
+                    found[num] = true;
+                }
+            }
+        }
+    }
+    return true;  // All subgrids are valid
+}
 
 // takes puzzle size and grid[][] representing sudoku puzzle
 // and tow booleans to be assigned: complete and valid.
@@ -17,6 +81,34 @@ void checkPuzzle(int psize, int **grid, bool *complete, bool *valid) {
   // YOUR CODE GOES HERE and in HELPER FUNCTIONS
   *valid = true;
   *complete = true;
+
+    // Check if the puzzle is complete (no zeros)
+    for (int row = 1; row <= psize; row++) {
+        for (int col = 1; col <= psize; col++) {
+            if (grid[row][col] == 0) {
+                *complete = false;
+                return; // No need to check validity if incomplete
+            }
+        }
+    }
+
+    // Check if rows are valid
+    if (!checkRows(psize, grid)) {
+        *valid = false;
+        return;
+    }
+
+    // Check if columns are valid
+    if (!checkColumns(psize, grid)) {
+        *valid = false;
+        return;
+    }
+
+    // Check if subgrids are valid
+    if (!checkSubgrids(psize, grid)) {
+        *valid = false;
+        return;
+    }
 }
 
 // takes filename and pointer to grid[][]
