@@ -1,4 +1,23 @@
 // Sudoku puzzle verifier and solver
+// Compilation and Running Instructions:
+//
+//1. To compile:
+//   gcc -Wall -Wextra -pthread -lm -std=c99 sudoku.c -o sudoku
+//
+//2. To run with a single puzzle file:
+//   ./sudoku puzzle-file.txt
+//
+//   Example:
+//   ./sudoku test1_4x4_valid.txt
+//
+//3. To run all tests using the test script:
+//   First make the script executable:
+//   chmod +x run_tests.sh
+//
+//   Then run it:
+//   ./run_tests.sh
+//
+// See README for more info
 
 #include <assert.h>
 #include <pthread.h>
@@ -7,67 +26,114 @@
 #include <stdlib.h>
 #include <math.h>
 
-bool checkRows(int psize, int **grid) {
-    for (int row = 1; row <= psize; row++) {
-        bool found[psize + 1];  // To track numbers 1 to psize
-        for (int i = 1; i <= psize; i++) {
-            found[i] = false;
-        }
+typedef struct {
+    int psize;  // puzzle size (e.g. 9x9)
+    int **grid; // 2D array of Sudoku grid
+    bool result; // validation result
+} ThreadData;
 
-        for (int col = 1; col <= psize; col++) {
-            int num = grid[row][col];
-            if (num < 1 || num > psize || found[num]) {
-                return false; // Duplicate or invalid number found
+// This function validates all rows in a Sudoku puzzle by checking if each row contains
+// unique numbers from 1 to `psize` (puzzle size) with no duplicates
+void *checkRows(void *threadInfo) {
+    ThreadData *data = (ThreadData *)threadInfo;
+    data->result = true;
+
+    // Track which numbers have been seen in a row
+    bool *found = (bool *)malloc((data->psize + 1) * sizeof(bool));
+    if (found == NULL) {
+        data->result = false;
+        pthread_exit(NULL);
+    }
+
+    // Check each row
+    for (int row = 1; row <= data->psize; row++) {
+        for (int i = 1; i <= data->psize; i++) found[i] = false;    // reset before checking new row
+
+        for (int col = 1; col <= data->psize; col++) {
+            int num = data->grid[row][col];
+            if (num < 1 || num > data->psize || found[num]) {   // invalid if num is out of range or already in row
+                data->result = false;
+                free(found);
+                pthread_exit(NULL);
             }
-            found[num] = true;
+            found[num] = true; // mark number as seen
         }
     }
-    return true; // All rows are valid
+
+    free(found);
+    pthread_exit(NULL);
 }
 
-bool checkColumns(int psize, int **grid) {
-    for (int col = 1; col <= psize; col++) {
-        bool found[psize + 1];  // To track numbers 1 to psize
-        for (int i = 1; i <= psize; i++) {
-            found[i] = false;
-        }
+// This function validates all columns in a Sudoku puzzle by checking if each row contains
+// unique numbers from 1 to `psize` (puzzle size) with no duplicates
+void *checkColumns(void *threadInfo) {
+    ThreadData *data = (ThreadData *)threadInfo;
+    data->result = true;
 
-        for (int row = 1; row <= psize; row++) {
-            int num = grid[row][col];
-            if (num < 1 || num > psize || found[num]) {
-                return false; // Duplicate or invalid number found
+    // track which numbers have been seen in a column
+    bool *found = (bool *)malloc((data->psize + 1) * sizeof(bool));
+    if (found == NULL) {
+        data->result = false;
+        pthread_exit(NULL);
+    }
+
+    for (int col = 1; col <= data->psize; col++) {
+        for (int i = 1; i <= data->psize; i++) found[i] = false;    // reset array before checking new column
+
+        for (int row = 1; row <= data->psize; row++) {
+            int num = data->grid[row][col];
+            if (num < 1 || num > data->psize || found[num]) {   // invalid if out of range or already found in column
+                data->result = false;
+                free(found);
+                pthread_exit(NULL);
             }
-            found[num] = true;
+            found[num] = true; // mark as seen in column
         }
     }
-    return true; // All columns are valid
+
+    free(found);
+    pthread_exit(NULL);
 }
 
-// Function to check if all subgrids in the Sudoku puzzle are valid
-bool checkSubgrids(int psize, int **grid) {
-    int subgrid_size = sqrt(psize);  // Each subgrid is subgrid_size x subgrid_size
+// This function validates all sub-grids in a Sudoku puzzle; it ensures that
+// each `sqrt(psize) x sqrt(psize)` sub-grid contains unique numbers from 1 to `psize` (puzzle size),
+// with no duplicates.
+// (Example sub-grids: if large grid is 9x9, sub-grid is 3x3; if larger grid is 16, sub-grid is 4x4)
+void *checkSubgrids(void *threadInfo) {
+    ThreadData *data = (ThreadData *)threadInfo;
+    data->result = true;
 
-    // Iterate through each subgrid
-    for (int startRow = 1; startRow <= psize; startRow += subgrid_size) {
-        for (int startCol = 1; startCol <= psize; startCol += subgrid_size) {
-            bool found[psize + 1];  // Track numbers 1 to psize
-            for (int i = 1; i <= psize; i++) {
-                found[i] = false;
-            }
+    // Calculate sub-grid size
+    int subgrid_size = sqrt(data->psize);
 
-            // Check all numbers inside the subgrid
+    // Track which numbers have been seen in a subgrid
+    bool *found = (bool *)malloc((data->psize + 1) * sizeof(bool));
+    if (found == NULL) {
+        data->result = false;
+        pthread_exit(NULL);
+    }
+
+    // Loop through sub-grid
+    for (int startRow = 1; startRow <= data->psize; startRow += subgrid_size) {
+        for (int startCol = 1; startCol <= data->psize; startCol += subgrid_size) {
+            for (int i = 1; i <= data->psize; i++) found[i] = false; // reset before checking new sub-grid
+
             for (int row = startRow; row < startRow + subgrid_size; row++) {
                 for (int col = startCol; col < startCol + subgrid_size; col++) {
-                    int num = grid[row][col];
-                    if (num < 1 || num > psize || found[num]) {
-                        return false;  // Duplicate or invalid number found
+                    int num = data->grid[row][col];
+                    if (num < 1 || num > data->psize || found[num]) { // invalid if num is out of valid range or already found in subgrid
+                        data->result = false;
+                        free(found);
+                        pthread_exit(NULL);
                     }
-                    found[num] = true;
+                    found[num] = true; // mark num as seen
                 }
             }
         }
     }
-    return true;  // All subgrids are valid
+
+    free(found);
+    pthread_exit(NULL);
 }
 
 // takes puzzle size and grid[][] representing sudoku puzzle
@@ -78,36 +144,47 @@ bool checkSubgrids(int psize, int **grid) {
 // If complete, a puzzle is valid if all rows/columns/boxes have numbers from 1
 // to psize For incomplete puzzles, we cannot say anything about validity
 void checkPuzzle(int psize, int **grid, bool *complete, bool *valid) {
-  // YOUR CODE GOES HERE and in HELPER FUNCTIONS
   *valid = true;
   *complete = true;
 
-    // Check if the puzzle is complete (no zeros)
+// Check if puzzle is 'complete' (i.e., no zeroes)
     for (int row = 1; row <= psize; row++) {
         for (int col = 1; col <= psize; col++) {
             if (grid[row][col] == 0) {
                 *complete = false;
-                return; // No need to check validity if incomplete
+                return; // if incomplete, we don't check validity
             }
         }
     }
 
-    // Check if rows are valid
-    if (!checkRows(psize, grid)) {
-        *valid = false;
-        return;
+    // Thread data structs with row, column, and sub-grid validation
+    ThreadData rowData = {psize, grid, false};
+    ThreadData colData = {psize, grid, false};
+    ThreadData subData = {psize, grid, false};
+
+    // Create threads
+    pthread_t rowThread, colThread, subThread;
+
+    if (pthread_create(&rowThread, NULL, checkRows, &rowData) != 0) {
+        perror("Failed to create row thread");
+        exit(EXIT_FAILURE);
+    }
+    if (pthread_create(&colThread, NULL, checkColumns, &colData) != 0) {
+        perror("Failed to create column thread");
+        exit(EXIT_FAILURE);
+    }
+    if (pthread_create(&subThread, NULL, checkSubgrids, &subData) != 0) {
+        perror("Failed to create subgrid thread");
+        exit(EXIT_FAILURE);
     }
 
-    // Check if columns are valid
-    if (!checkColumns(psize, grid)) {
-        *valid = false;
-        return;
-    }
+    pthread_join(rowThread, NULL);
+    pthread_join(colThread, NULL);
+    pthread_join(subThread, NULL);
 
-    // Check if subgrids are valid
-    if (!checkSubgrids(psize, grid)) {
+    // Check if validation tests failed
+    if (!rowData.result || !colData.result || !subData.result) {
         *valid = false;
-        return;
     }
 }
 
